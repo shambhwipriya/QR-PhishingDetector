@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>QR Code Phishing Detector - Easy</title>
+  <style>
+    body { font-family: Arial; max-width: 600px; margin: 20px auto; padding: 20px; background: #f9f9f9; }
+    h1 { font-size: 20px; }
+    .box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    canvas { max-width: 100%; border: 1px solid #ccc; border-radius: 6px; margin-top: 10px; display: none; }
+    button, input[type=file] { margin: 6px 0; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; }
+    .result { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 14px; }
+    .safe { background: #d1fae5; color: #065f46; }
+    .suspicious { background: #e5cb09; color: #92400e; }
+    .unknown { background: #e0e7ff; color: #3730a3; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>QR Code Phishing Detector</h1>
+    <p>Upload a QR image. It will decode and check if the link looks suspicious.</p>
+
+    <p><input type="file" id="fileInput" accept="image/*">
+    <button id="scanImage">Scan Image</button></p>
+
+    <canvas id="canvas"></canvas>
+    <div id="output" class="result unknown">No scan yet.</div>
+  </div>
+
+  <!-- jsQR library -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const fileInput = document.getElementById("fileInput");
+    const scanImageBtn = document.getElementById("scanImage");
+    const output = document.getElementById("output");
+
+    // Expanded phishing checks
+    function checkURL(url) {
+      if (!url.startsWith("http")) 
+        return {status: "unknown", msg: "Not a URL"};
+
+      if (url.startsWith("http://")) 
+        return {status: "suspicious", msg: "Uses http (not secure)"};
+
+      const shorteners = ["bit.ly", "tinyurl", "goo.gl", "t.co"];
+      if (shorteners.some(s => url.includes(s))) 
+        return {status: "suspicious", msg: "Shortened link"};
+
+      if (/\d+\.\d+\.\d+\.\d+/.test(url)) 
+        return {status: "suspicious", msg: "Direct IP address in URL"};
+
+      if (url.length > 100) 
+        return {status: "suspicious", msg: "Very long URL (possible obfuscation)"};
+
+      const typos = ["paypa1", "g00gle", "faceb00k", "micros0ft"];
+      if (typos.some(t => url.toLowerCase().includes(t))) 
+        return {status: "suspicious", msg: "Suspicious domain (possible typo)"};
+
+      return {status: "safe", msg: "Looks safe (basic check)"};
+    }
+
+    function showResult(text) {
+      const check = checkURL(text);
+      output.className = "result " + check.status;
+      // make clickable link if it's URL
+      let displayText = text.startsWith("http") ? 
+        `<a href="${text}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+      output.innerHTML = `<b>Decoded:</b> ${displayText}<br><b>Check:</b> ${check.msg}`;
+    }
+
+    // Upload image scanning
+    scanImageBtn.onclick = () => {
+      const file = fileInput.files[0];
+      if (!file) { alert("Select an image first"); return; }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        canvas.style.display = "block";
+        canvas.width = img.width; canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imgData.data, imgData.width, imgData.height);
+        if (code) showResult(code.data);
+        else output.textContent = "No QR found.";
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    };
+  </script>
+</body>
+</html>
