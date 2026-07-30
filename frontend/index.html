@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QRISK — QR Phishing Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+  :root{
+    --bg: #0a0e14;
+    --panel: #121821;
+    --panel-2: #0e141b;
+    --line: #212b36;
+    --line-soft: #1a232d;
+    --text: #e7ecf2;
+    --muted: #8492a1;
+    --muted-2: #4e5c6b;
+    --safe: #35d399;
+    --amber: #f2b84b;
+    --risk: #ff5c5c;
+    --scan: #4cc9f0;
+    --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+    --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+
+  /* CSS display rules below (flex/grid) would otherwise override the
+     native [hidden] attribute since they share the same specificity —
+     this guarantees hidden always wins. */
+  [hidden]{ display:none !important; }
+
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-sans);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  body{
+    min-height:100vh;
+    background-image:
+      radial-gradient(circle at 15% -10%, rgba(76,201,240,0.06), transparent 40%),
+      radial-gradient(circle at 100% 10%, rgba(53,211,153,0.05), transparent 35%);
+  }
+
+  a{ color:var(--scan); }
+
+  ::selection{ background:rgba(76,201,240,0.25); }
+
+  :focus-visible{
+    outline:2px solid var(--scan);
+    outline-offset:2px;
+  }
+
+  .wrap{
+    max-width:960px;
+    margin:0 auto;
+    padding:28px 20px 60px;
+  }
+
+  /* ---------- Header ---------- */
+
+  .topbar{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:6px 16px;
+    padding-bottom:22px;
+    margin-bottom:26px;
+    border-bottom:1px solid var(--line-soft);
+  }
+
+  .brand{
+    font-family:var(--font-mono);
+    font-size:20px;
+    font-weight:600;
+    letter-spacing:0.06em;
+    display:flex;
+    align-items:center;
+    gap:9px;
+  }
+
+  .brand .mark{
+    color:var(--scan);
+    font-size:18px;
+  }
+
+  .tagline{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--muted-2);
+    letter-spacing:0.03em;
+  }
+
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.14em;
+    color:var(--muted-2);
+    margin:0 0 12px;
+    text-transform:uppercase;
+  }
+
+  /* ---------- Stage layout ---------- */
+
+  .stage{
+    display:grid;
+    grid-template-columns:1.15fr 1fr;
+    gap:18px;
+    align-items:start;
+  }
+
+  @media (max-width:760px){
+    .stage{ grid-template-columns:1fr; }
+  }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:22px;
+  }
+
+  /* ---------- Scan frame (viewfinder) ---------- */
+
+  .scanner-panel{ display:flex; flex-direction:column; gap:16px; }
+
+  .scan-frame{
+    position:relative;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:10px;
+    min-height:280px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    transition:border-color 220ms ease, box-shadow 220ms ease;
+    overflow:hidden;
+  }
+
+  .scan-frame.dragover{
+    border-color:var(--scan);
+    box-shadow:0 0 0 1px var(--scan) inset;
+  }
+
+  .scan-frame.state-scanning{
+    border-color:var(--scan);
+  }
+
+  .scan-frame.state-safe{
+    border-color:var(--safe);
+  }
+
+  .scan-frame.state-suspicious{
+    border-color:var(--risk);
+  }
+
+  .corner{
+    position:absolute;
+    width:22px;
+    height:22px;
+    border:2px solid var(--muted-2);
+    transition:border-color 220ms ease;
+  }
+  .scan-frame.state-scanning .corner{ border-color:var(--scan); }
+  .scan-frame.state-safe .corner{ border-color:var(--safe); }
+  .scan-frame.state-suspicious .corner{ border-color:var(--risk); }
+
+  .corner.tl{ top:10px; left:10px; border-right:none; border-bottom:none; border-radius:4px 0 0 0; }
+  .corner.tr{ top:10px; right:10px; border-left:none; border-bottom:none; border-radius:0 4px 0 0; }
+  .corner.bl{ bottom:10px; left:10px; border-right:none; border-top:none; border-radius:0 0 0 4px; }
+  .corner.br{ bottom:10px; right:10px; border-left:none; border-top:none; border-radius:0 0 4px 0; }
+
+  .scan-line{
+    position:absolute;
+    left:10px;
+    right:10px;
+    height:2px;
+    background:linear-gradient(90deg, transparent, var(--scan), transparent);
+    top:10px;
+    opacity:0;
+    pointer-events:none;
+  }
+
+  .scan-frame.state-scanning .scan-line{
+    opacity:1;
+    animation:sweep 1.4s ease-in-out infinite;
+  }
+
+  @keyframes sweep{
+    0%{ top:14px; }
+    50%{ top:calc(100% - 16px); }
+    100%{ top:14px; }
+  }
+
+  .scan-empty{
+    text-align:center;
+    color:var(--muted);
+    font-size:14px;
+  }
+
+  .scan-empty p{ margin:0 0 12px; }
+
+  .file-btn{
+    display:inline-block;
+    font-family:var(--font-mono);
+    font-size:13px;
+    letter-spacing:0.02em;
+    color:var(--text);
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:9px 16px;
+    cursor:pointer;
+    transition:border-color 150ms ease, color 150ms ease;
+  }
+
+  .file-btn:hover{ border-color:var(--scan); color:var(--scan); }
+
+  #preview{
+    max-width:100%;
+    max-height:220px;
+    border-radius:6px;
+    display:block;
+  }
+
+  .scan-message{
+    font-family:var(--font-mono);
+    font-size:13px;
+    color:var(--muted);
+    text-align:center;
+  }
+
+  .url-alt{ display:flex; flex-direction:column; gap:8px; }
+
+  .divider-label{
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--muted-2);
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+  }
+
+  .url-row{ display:flex; gap:8px; }
+
+  #urlInput{
+    flex:1;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:10px 12px;
+    color:var(--text);
+    font-family:var(--font-mono);
+    font-size:13px;
+  }
+
+  #urlInput:focus{ border-color:var(--scan); }
+
+  #urlInput::placeholder{ color:var(--muted-2); }
+
+  .btn-primary{
+    background:var(--scan);
+    color:#04141c;
+    border:none;
+    border-radius:6px;
+    padding:10px 18px;
+    font-family:var(--font-mono);
+    font-weight:600;
+    font-size:13px;
+    cursor:pointer;
+    transition:filter 150ms ease;
+  }
+
+  .btn-primary:hover{ filter:brightness(1.1); }
+  .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; }
+
+  /* ---------- Verdict panel ---------- */
+
+  .verdict-panel{ min-height:280px; display:flex; flex-direction:column; }
+
+  .empty-msg{
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.6;
+  }
+
+  .verdict-result{ display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center; }
+
+  .badge{
+    font-family:var(--font-mono);
+    font-weight:600;
+    font-size:14px;
+    letter-spacing:0.08em;
+    padding:6px 14px;
+    border-radius:20px;
+    border:1px solid;
+  }
+
+  .badge.safe{ color:var(--safe); border-color:var(--safe); background:rgba(53,211,153,0.08); }
+  .badge.suspicious{ color:var(--risk); border-color:var(--risk); background:rgba(255,92,92,0.08); }
+
+  .gauge{
+    width:128px;
+    height:128px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:conic-gradient(var(--gauge-color, var(--scan)) calc(var(--pct, 0) * 1%), var(--line) 0);
+  }
+
+  .gauge-inner{
+    width:96px;
+    height:96px;
+    border-radius:50%;
+    background:var(--panel);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+  }
+
+  .gauge-value{
+    font-family:var(--font-mono);
+    font-size:22px;
+    font-weight:600;
+  }
+
+  .gauge-caption{
+    font-family:var(--font-mono);
+    font-size:9px;
+    letter-spacing:0.1em;
+    color:var(--muted-2);
+  }
+
+  .decoded-url{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--muted);
+    word-break:break-all;
+    background:var(--panel-2);
+    border:1px solid var(--line-soft);
+    border-radius:6px;
+    padding:10px 12px;
+    width:100%;
+  }
+
+  .decoded-url a{ color:inherit; text-decoration:underline; text-decoration-color:var(--line); }
+
+  /* ---------- Signal log ---------- */
+
+  .log-panel{ margin-top:18px; }
+
+  .log{
+    font-family:var(--font-mono);
+    font-size:13px;
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+
+  .log-empty{ color:var(--muted-2); margin:0; }
+
+  .log-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:9px 2px;
+    border-bottom:1px solid var(--line-soft);
+    opacity:0;
+    transform:translateY(4px);
+    animation:rowIn 260ms ease forwards;
+  }
+
+  .log-row:last-child{ border-bottom:none; }
+
+  @keyframes rowIn{
+    to{ opacity:1; transform:translateY(0); }
+  }
+
+  .log-key{ color:var(--muted); }
+
+  .log-val{ display:flex; align-items:center; gap:10px; }
+
+  .log-tag{
+    font-size:10px;
+    letter-spacing:0.06em;
+    padding:2px 7px;
+    border-radius:10px;
+    border:1px solid;
+  }
+
+  .log-tag.ok{ color:var(--safe); border-color:var(--safe); }
+  .log-tag.flag{ color:var(--risk); border-color:var(--risk); }
+
+  /* ---------- Footer ---------- */
+
+  .footbar{
+    margin-top:22px;
+    display:flex;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--muted-2);
+    letter-spacing:0.03em;
+  }
+
+  .dot{
+    display:inline-block;
+    width:6px;
+    height:6px;
+    border-radius:50%;
+    margin-right:6px;
+    background:var(--muted-2);
+  }
+
+  .dot.online{ background:var(--safe); }
+  .dot.offline{ background:var(--risk); }
+
+  @media (prefers-reduced-motion: reduce){
+    .scan-line{ animation:none !important; }
+    .log-row{ animation:none !important; opacity:1; transform:none; }
+  }
+
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="topbar">
+    <div class="brand"><span class="mark">◈</span>QRISK</div>
+    <div class="tagline">QR code phishing scanner — local ML detection</div>
+  </header>
+
+  <main class="stage">
+
+    <section class="panel scanner-panel">
+      <p class="eyebrow">Input</p>
+
+      <div class="scan-frame" id="scanFrame">
+        <span class="corner tl"></span>
+        <span class="corner tr"></span>
+        <span class="corner bl"></span>
+        <span class="corner br"></span>
+        <div class="scan-line" id="scanLine"></div>
+
+        <div class="scan-empty" id="scanEmpty">
+          <p>Drop a QR image here, or</p>
+          <label class="file-btn">
+            Choose image
+            <input type="file" id="fileInput" accept="image/*" hidden>
+          </label>
+        </div>
+
+        <canvas id="canvas" hidden></canvas>
+      </div>
+
+      <div class="url-alt">
+        <span class="divider-label">Or analyze a URL directly</span>
+        <div class="url-row">
+          <input type="text" id="urlInput" placeholder="https://example.com/login">
+          <button class="btn-primary" id="analyzeUrlBtn">Analyze</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel verdict-panel" id="verdictPanel">
+      <p class="eyebrow">Status</p>
+
+      <div id="verdictEmpty">
+        <p class="empty-msg">No scan yet. Load a QR code or paste a URL to begin.</p>
+      </div>
+
+      <div class="verdict-result" id="verdictResult" hidden>
+        <div class="badge" id="badge">SAFE</div>
+        <div class="gauge" id="gauge">
+          <div class="gauge-inner">
+            <span class="gauge-value" id="gaugeValue">0%</span>
+            <span class="gauge-caption">RISK</span>
+          </div>
+        </div>
+        <div class="decoded-url" id="decodedUrl"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <section class="panel log-panel">
+    <p class="eyebrow">Signal log — 12 checks</p>
+    <div class="log" id="log">
+      <p class="log-empty">Run a scan to see the signal breakdown.</p>
+    </div>
+  </section>
+
+  <footer class="footbar">
+    <span>Model: Random Forest classifier · runs locally</span>
+    <span><span class="dot" id="statusDot"></span><span id="statusText">Checking backend…</span></span>
+  </footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+<script>
+
+  const BACKEND = "http://127.0.0.1:5000";
+
+  const scanFrame   = document.getElementById("scanFrame");
+  const scanLine    = document.getElementById("scanLine");
+  const scanEmpty   = document.getElementById("scanEmpty");
+  const canvas      = document.getElementById("canvas");
+  const ctx         = canvas.getContext("2d");
+  const fileInput   = document.getElementById("fileInput");
+
+  const urlInput      = document.getElementById("urlInput");
+  const analyzeUrlBtn = document.getElementById("analyzeUrlBtn");
+
+  const verdictEmpty  = document.getElementById("verdictEmpty");
+  const verdictResult = document.getElementById("verdictResult");
+  const badge         = document.getElementById("badge");
+  const gauge         = document.getElementById("gauge");
+  const gaugeValue    = document.getElementById("gaugeValue");
+  const decodedUrl    = document.getElementById("decodedUrl");
+
+  const log = document.getElementById("log");
+
+  const statusDot  = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+
+  // ---------- Backend health check ----------
+
+  async function checkBackend(){
+    try{
+      const res = await fetch(BACKEND + "/", { method: "GET" });
+      if(res.ok){
+        statusDot.className = "dot online";
+        statusText.textContent = "Backend online";
+      } else {
+        throw new Error("bad status");
+      }
+    } catch(e){
+      statusDot.className = "dot offline";
+      statusText.textContent = "Backend offline — start app.py";
+    }
+  }
+  checkBackend();
+
+  // ---------- Feature display config ----------
+
+  const FEATURE_LABELS = {
+    url_length: "URL length",
+    has_https: "Uses HTTPS",
+    has_at_symbol: "Contains @ symbol",
+    has_hyphen: "Contains hyphen",
+    suspicious_word: "Suspicious keyword",
+    has_ip: "IP address in URL",
+    dot_count: "Dot count",
+    digit_count: "Digit count",
+    special_char_count: "Special characters",
+    is_shortened: "URL shortener",
+    slash_count: "Slash count",
+    domain_length: "Domain length",
+  };
+
+  // For these keys: 1 = flag (risky), 0 = ok. For has_https it's reversed (0 = flag).
+  const FLAG_RULES = {
+    has_https: (v) => v === 0,
+    has_at_symbol: (v) => v === 1,
+    has_hyphen: (v) => v === 1,
+    suspicious_word: (v) => v === 1,
+    has_ip: (v) => v === 1,
+    is_shortened: (v) => v === 1,
+  };
+
+  function renderLog(features){
+    log.innerHTML = "";
+    let i = 0;
+    for(const key in FEATURE_LABELS){
+      if(!(key in features)) continue;
+      const value = features[key];
+      const row = document.createElement("div");
+      row.className = "log-row";
+      row.style.animationDelay = (i * 45) + "ms";
+
+      let tagHtml = "";
+      if(key in FLAG_RULES){
+        const flagged = FLAG_RULES[key](value);
+        tagHtml = `<span class="log-tag ${flagged ? "flag" : "ok"}">${flagged ? "FLAG" : "OK"}</span>`;
+      }
+
+      row.innerHTML = `
+        <span class="log-key">${FEATURE_LABELS[key]}</span>
+        <span class="log-val">${value}${tagHtml}</span>
+      `;
+      log.appendChild(row);
+      i++;
+    }
+  }
+
+  // ---------- Gauge color by risk band ----------
+
+  function gaugeColor(pct){
+    if(pct < 40) return getComputedStyle(document.documentElement).getPropertyValue("--safe");
+    if(pct < 70) return getComputedStyle(document.documentElement).getPropertyValue("--amber");
+    return getComputedStyle(document.documentElement).getPropertyValue("--risk");
+  }
+
+  // ---------- States ----------
+
+  function setScanning(){
+    scanFrame.className = "scan-frame state-scanning";
+    verdictEmpty.hidden = true;
+    verdictResult.hidden = true;
+    verdictEmpty.hidden = false;
+    verdictEmpty.innerHTML = `<p class="empty-msg">Analyzing signals…</p>`;
+    log.innerHTML = `<p class="log-empty">Reading feature set…</p>`;
+  }
+
+  function setError(message){
+    scanFrame.className = "scan-frame";
+    verdictResult.hidden = true;
+    verdictEmpty.hidden = false;
+    verdictEmpty.innerHTML = `<p class="empty-msg">${message}</p>`;
+    log.innerHTML = `<p class="log-empty">No data — scan did not complete.</p>`;
+  }
+
+  function setResult(data){
+    const isSafe = data.prediction.toLowerCase() === "safe";
+
+    scanFrame.className = "scan-frame " + (isSafe ? "state-safe" : "state-suspicious");
+
+    verdictEmpty.hidden = true;
+    verdictResult.hidden = false;
+
+    badge.textContent = data.prediction.toUpperCase();
+    badge.className = "badge " + (isSafe ? "safe" : "suspicious");
+
+    const pct = data.risk_score;
+    gauge.style.setProperty("--pct", pct);
+    gauge.style.setProperty("--gauge-color", gaugeColor(pct));
+    gaugeValue.textContent = pct + "%";
+
+    const isLink = data.url.startsWith("http");
+    decodedUrl.innerHTML = isLink
+      ? `<a href="${data.url}" target="_blank" rel="noopener">${data.url}</a>`
+      : data.url;
+
+    renderLog(data.features);
+  }
+
+  // ---------- Analyze call ----------
+
+  async function analyze(url){
+    if(!url || !url.trim()){
+      setError("Enter or scan a URL first.");
+      return;
+    }
+
+    setScanning();
+
+    try{
+      const res = await fetch(BACKEND + "/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+
+      if(!res.ok) throw new Error("bad status");
+
+      const data = await res.json();
+      setResult(data);
+      statusDot.className = "dot online";
+      statusText.textContent = "Backend online";
+    } catch(e){
+      setError("Can't reach the scanner. Start the Flask backend (app.py) and try again.");
+      statusDot.className = "dot offline";
+      statusText.textContent = "Backend offline — start app.py";
+    }
+  }
+
+  // ---------- QR decode from a file ----------
+
+  function decodeFile(file){
+    const img = new Image();
+    const objectURL = URL.createObjectURL(file);
+
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imgData.data, imgData.width, imgData.height);
+
+      URL.revokeObjectURL(objectURL);
+
+      if(code){
+        analyze(code.data);
+      } else {
+        setError("No QR code found in that image. Try a clearer photo.");
+      }
+    };
+
+    img.src = objectURL;
+  }
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if(file) decodeFile(file);
+  });
+
+  // ---------- Drag and drop ----------
+
+  ["dragover", "dragenter"].forEach(evt => {
+    scanFrame.addEventListener(evt, (e) => {
+      e.preventDefault();
+      scanFrame.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(evt => {
+    scanFrame.addEventListener(evt, (e) => {
+      e.preventDefault();
+      scanFrame.classList.remove("dragover");
+    });
+  });
+
+  scanFrame.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files[0];
+    if(file) decodeFile(file);
+  });
+
+  // ---------- Direct URL analyze ----------
+
+  analyzeUrlBtn.addEventListener("click", () => analyze(urlInput.value));
+  urlInput.addEventListener("keydown", (e) => {
+    if(e.key === "Enter") analyze(urlInput.value);
+  });
+
+</script>
+
+</body>
+</html>
