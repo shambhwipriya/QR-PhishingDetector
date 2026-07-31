@@ -1,8 +1,8 @@
 import joblib
-from flask import Flask, request, jsonify
 from flask_cors import CORS
 from feature import extract_features
 import os
+from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
 CORS(app)
@@ -11,12 +11,9 @@ CORS(app)
 model = joblib.load("phishing_model.pkl")
 
 
-@app.route("/")
+@app.route('/')
 def home():
-    return jsonify({
-        "status": "Backend Running",
-        "message": "QR Phishing Detector API"
-    })
+    return render_template('index.html')
 
 
 @app.route("/health", methods=["GET"])
