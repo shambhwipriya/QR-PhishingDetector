@@ -1,222 +1,151 @@
-# QR Phishing Detector 
+# QR Phishing Detector
 
-An ML-based QR Phishing Detection System that analyzes URLs and predicts whether a website is *Safe* or *Suspicious* using machine learning and URL feature extraction.
-
----
-
-##  Project Overview
-
-QR Code phishing (Quishing) is a cybersecurity threat where attackers use malicious QR codes to redirect users to fake or harmful websites.
-
-This project aims to detect phishing URLs by extracting important URL-based features and applying a trained machine learning model to generate a prediction along with a risk score.
-
-The system provides a simple interface where users can enter a URL and get instant security analysis.
+An ML-based QR code phishing detection system. It scans a QR code (or takes a URL directly), extracts 12 URL-based features, and uses a trained Random Forest model to classify the link as **Safe** or **Suspicious** with a risk score.
 
 ---
 
-##  Features
+## Project Overview
 
-*  URL-based phishing detection
-*  Machine learning based classification
-*  Risk score generation
-*  Safe / Suspicious prediction
-*  URL feature extraction
-*  Real-time analysis using Flask API
-*  User-friendly web interface
+QR code phishing ("quishing") is a growing cybersecurity threat where attackers embed malicious links inside QR codes to redirect users to fake or harmful websites — bypassing the usual visual cues people rely on to spot a scam link.
+
+This project detects phishing attempts by decoding the QR code in the browser, extracting URL-based features, and running them through a trained machine learning model to predict how risky the link is.
 
 ---
 
-#  Tech Stack
+## Features
 
-## Frontend
-
-* HTML
-* CSS
-* JavaScript
-
-## Backend
-
-* Python
-* Flask
-
-## Machine Learning
-
-* Scikit-learn
-* Pandas
-* NumPy
-* Joblib
+- Upload a QR code image and decode it directly in the browser
+- Analyze any URL directly, without needing a QR image
+- 12 URL-based features extracted per link (length, HTTPS usage, IP address presence, suspicious keywords, shorteners, special characters, etc.)
+- Random Forest classifier trained on a labeled phishing/legitimate URL dataset
+- Risk score (0–100%) and Safe / Suspicious verdict
+- Clean, terminal-style "security scanner" UI
 
 ---
 
-#  Project Structure
+## Tech Stack
+
+**Backend:** Python, Flask, Flask-CORS, scikit-learn, joblib
+**Frontend:** HTML, CSS, JavaScript, [jsQR](https://github.com/cozmo/jsQR) for in-browser QR decoding
+**Model:** Random Forest Classifier (scikit-learn)
+
+---
+
+## Project Structure
 
 ```
-QR-Phishing-Detector
-│
-├── backend
-│   │
-│   ├── app.py
-│   │   └── Flask API server and model prediction logic
-│   │
-│   ├── feature.py
-│   │   └── URL feature extraction module
-│   │
-│   ├── train_model.py
-│   │   └── Machine learning model training script
-│   │
-│   ├── phishing_model.pkl
-│   │   └── Trained ML model file
-│   │
-│   └── requirements.txt
-│       └── Required Python dependencies
-│
-├── frontend
-│   │
-│   ├── index.html
-│   │   └── User interface
-│   │
-│   ├── style.css
-│   │   └── Frontend styling
-│   │
-│   └── script.js
-│       └── Frontend logic and API connection
-│
-├── screenshots
-│   └── Project screenshots
-│
-└── README.md
+Mini project/
+├── backend/
+│   ├── app.py                  # Flask API (/check endpoint)
+│   ├── feature.py              # URL feature extraction (12 features)
+│   ├── train_model.py          # Model training script
+│   ├── prepare_dataset.py      # Dataset cleaning/prep
+│   ├── generate_features.py    # Feature generation for training data
+│   ├── phishing_model.pkl      # Trained Random Forest model
+│   └── *.csv                   # Datasets
+├── frontend/
+│   └── index.html              # QR scanner UI (QRISK)
+└── requirements.txt
 ```
 
 ---
 
-#  Installation & Setup
+## How It Works
 
-## 1. Clone Repository
-
-```
-git clone <repository-url>
-```
-
-Navigate into project:
-
-```
-cd QR-Phishing-Detector
-```
+1. User uploads a QR code image (or types a URL directly) in the frontend.
+2. [jsQR](https://github.com/cozmo/jsQR) decodes the QR code in the browser to extract the embedded URL.
+3. The URL is sent to the Flask backend via a `POST` request to `/check`.
+4. `feature.py` extracts 12 features from the URL, including:
+   - URL length
+   - HTTPS usage
+   - Presence of `@` symbol
+   - Presence of hyphens
+   - Suspicious keywords (login, verify, secure, bank, etc.)
+   - IP address in URL
+   - Number of dots, digits, slashes, and special characters
+   - Use of known URL shorteners
+   - Domain length
+5. The trained Random Forest model predicts whether the URL is **Safe** or **Suspicious** and returns a risk score.
+6. The frontend displays the verdict, risk score, and feature breakdown.
 
 ---
 
-# Backend Setup
+## Setup & Installation
 
-Go to backend folder:
-
+### 1. Clone the repository
+```bash
+git clone https://github.com/shambhwipriya/QR-PhishingDetector.git
+cd QR-PhishingDetector
 ```
+
+### 2. Set up the backend
+```bash
 cd backend
-```
+python -m venv .venv
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate  # macOS/Linux
 
-Install required dependencies:
-
-```
 pip install -r requirements.txt
 ```
 
-Run Flask server:
-
-```
+### 3. Run the Flask server
+```bash
 python app.py
 ```
+The backend will start at `http://127.0.0.1:5000`.
 
-Backend will start at:
+### 4. Open the frontend
+Open `frontend/index.html` in your browser (make sure the backend is running first).
 
+---
+
+## API
+
+### `POST /check`
+
+**Request body:**
+```json
+{
+  "url": "http://secure-login-bank.xyz/verify?id=123"
+}
 ```
-http://127.0.0.1:5000
+
+**Response:**
+```json
+{
+  "url": "http://secure-login-bank.xyz/verify?id=123",
+  "prediction": "Suspicious",
+  "risk_score": 86,
+  "features": {
+    "url_length": 42,
+    "has_https": 0,
+    "has_at_symbol": 0,
+    "has_hyphen": 1,
+    "suspicious_word": 1,
+    "has_ip": 0,
+    "dot_count": 1,
+    "digit_count": 3,
+    "special_char_count": 3,
+    "is_shortened": 0,
+    "slash_count": 3,
+    "domain_length": 21
+  }
+}
 ```
 
 ---
 
-# Frontend Setup
+## Model Training
 
-Open frontend folder.
+The model was trained on a labeled dataset of phishing and legitimate URLs (`phishing_site_urls.csv`) using the following pipeline:
 
-Run the frontend using Live Server or any local server.
-
-The frontend communicates with the Flask backend API for URL analysis.
-
----
-
-#  Machine Learning Workflow
-
-The system follows these steps:
-
-1. URL dataset collection
-2. Data preprocessing
-3. URL feature extraction
-4. Machine learning model training
-5. Model saving using Joblib
-6. Flask API integration
-7. Real-time URL prediction
+1. `prepare_dataset.py` — cleans and prepares the raw dataset
+2. `generate_features.py` — extracts the 12 URL features for every row
+3. `train_model.py` — trains a Random Forest Classifier and saves it as `phishing_model.pkl`
 
 ---
 
-#  URL Features Analyzed
+## Author
 
-The model extracts different URL-based security features such as:
-
-* URL length
-* HTTPS availability
-* IP address presence
-* Special characters
-* Domain-related information
-* Suspicious URL patterns
-
----
-
-#  Output
-
-The system provides:
-
-* URL classification:
-
-  * Safe
-  * Suspicious
-
-* Risk Score:
-
-  * Percentage-based security risk estimation
-
-* Extracted URL features
-
----
-
-#  Future Improvements
-
-* QR image scanning support
-* Browser extension integration
-* Deep learning based phishing detection
-* Real-time threat intelligence integration
-* Mobile application support
-
----
-
-#  Applications
-
-* Personal cybersecurity protection
-* Safe browsing assistance
-* QR code security checking
-* Phishing awareness and prevention
-
----
-
-# 👩 Author
-
-*Shambhwi Priya*
-
-Computer Science Engineering Student
-
----
-
-#  License
-
-This project is developed for educational and research purposes.
-
-```
-```
+**Shambhwi Priya**
+College mini project — QR Code Phishing Detection using Machine Learning
